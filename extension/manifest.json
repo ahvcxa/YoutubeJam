@@ -5,7 +5,8 @@
   "description": "YouTube videolarını arkadaşlarınla senkronize izle.",
   "permissions": ["activeTab", "storage"],
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_js": ["popup.js"] 
   },
   "content_scripts": [
     {
