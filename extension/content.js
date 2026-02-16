@@ -1,134 +1,153 @@
 // --- AYARLAR ---
 let roomId = "vibe-room-1"; 
 const socket = io("http://localhost:3000");
+
+// Sadece bu değişken 'true' ise çalışırız.
 let isPartyActive = sessionStorage.getItem('jamActive') === 'true';
-let isRemoteAction = false; 
+
+let isRemoteAction = false; // "Ben mi bastım, sunucu mu bastı?" kilidi
 let video = null; 
 let currentUrl = location.href;
 
 // --- BAŞLANGIÇ ---
+// Sayfa yüklendiğinde eğer Jam modu açıksa hemen bağlan
 if (isPartyActive) {
-    socket.emit('joinRoom', roomId);
-    console.log("🟢 Jam Modu Aktif! Oda:", roomId);
+    connectToRoom();
 }
 
-// --- ANA DÖNGÜ ---
-function checkPageStatus() {
-    if (!isPartyActive) return;
+function connectToRoom() {
+    socket.emit('joinRoom', roomId);
+    console.log("🟢 Jam Modu: AKTİF. Oda:", roomId);
+}
 
-    // 1. URL Değişim Kontrolü
+// --- ANA DÖNGÜ (Her 1 saniyede bir ortamı kolla) ---
+setInterval(() => {
+    if (!isPartyActive) return; // Pasifsek işlemci yorma
+
+    // 1. VİDEO KONTROLÜ
+    const newVideo = document.querySelector('video');
+    if (newVideo && newVideo !== video) {
+        console.log("🎥 Video elementi yakalandı.");
+        video = newVideo;
+        attachEvents(video); // Kulakları tak
+    }
+
+    // 2. URL KONTROLÜ
     if (location.href !== currentUrl) {
         currentUrl = location.href;
         
-        // Sadece gerçek videolarda ve manuel değişimlerde haber ver
+        // Eğer bu değişimi sunucu yapmadıysa ve geçerli bir videoysa
         if (!isRemoteAction && currentUrl.includes("watch?v=")) {
-            console.log("🔗 Link değişti, gönderiliyor...");
+            console.log("🔗 URL değişti, arkadaşlara haber veriliyor...");
             socket.emit('videoAction', { 
-                type: 'URL_CHANGE', 
+                type: 'URL', 
                 newUrl: currentUrl, 
                 roomId: roomId 
             });
         }
     }
+}, 1000);
 
-    // 2. Video Element Kontrolü
-    const newVideo = document.querySelector('video');
-    if (newVideo && newVideo !== video) {
-        video = newVideo;
-        attachEvents(video);
-    }
+// --- VİDEO DİNLEYİCİLERİ (Kulaklar) ---
+function attachEvents(vid) {
+    // Yardımcı fonksiyon: Sadece aktifsek ve kilit yoksa gönder
+    const shouldSend = () => isPartyActive && !isRemoteAction;
+
+    vid.onplay = () => {
+        if (shouldSend()) {
+            console.log("📤 Play gönderildi");
+            socket.emit('videoAction', { type: 'PLAY', roomId });
+        }
+    };
+
+    vid.onpause = () => {
+        if (shouldSend()) {
+            console.log("📤 Pause gönderildi");
+            socket.emit('videoAction', { type: 'PAUSE', roomId });
+        }
+    };
+
+    vid.onseeking = () => {
+        if (shouldSend()) {
+            console.log("📤 Seek gönderildi");
+            socket.emit('videoAction', { type: 'SEEK', time: vid.currentTime, roomId });
+        }
+    };
 }
 
-// --- VİDEO DİNLEYİCİLERİ ---
-function attachEvents(videoElement) {
-    const canSend = () => isPartyActive && !isRemoteAction && location.href.includes("watch?v=");
+// --- SUNUCUDAN GELENLERİ UYGULA (Eller) ---
+socket.on('applyAction', (data) => {
+    if (!isPartyActive) return; // Pasifsek duymazdan gel
 
-    videoElement.onplay = () => {
-        if (canSend()) socket.emit('videoAction', { type: 'PLAY', roomId });
-    };
+    console.log("📥 Gelen Komut:", data.type);
+    isRemoteAction = true; // Kilit tak (Kendi kendimize loop'a girmeyelim)
 
-    videoElement.onpause = () => {
-        if (canSend()) socket.emit('videoAction', { type: 'PAUSE', roomId });
-    };
-
-    videoElement.onseeking = () => {
-        if (canSend()) socket.emit('videoAction', { type: 'SEEK', time: videoElement.currentTime, roomId });
-    };
-}
-
-setInterval(checkPageStatus, 500);
-
-// --- SERVER'DAN GELEN KOMUTLAR ---
-socket.on('videoActionFromServer', (data) => {
-    if (!isPartyActive) return;
-
-    isRemoteAction = true; 
-    console.log("📥 Gelen Emir:", data.type);
-
-    // 1. URL DEĞİŞİMİ veya SENKRONİZASYONDA URL FARKI
-    // Eğer gelen komut bir URL içeriyorsa ve ben o URL'de değilsem -> IŞINLAN
-    if ((data.type === 'URL_CHANGE' || data.type === 'SYNC') && data.newUrl && location.href !== data.newUrl) {
-        console.log("🚀 Hedef videoya gidiliyor:", data.newUrl);
-        window.location.href = data.newUrl;
-        return; // Sayfa yenileneceği için diğer işlemleri yapma
+    // 1. URL DEĞİŞİMİ
+    if (data.type === 'URL') {
+        if (location.href !== data.newUrl) {
+            console.log("🚀 Işınlanılıyor:", data.newUrl);
+            window.location.href = data.newUrl;
+            // Sayfa yenileneceği için return, kilit açmaya gerek yok
+            return; 
+        }
     }
-
-    // 2. VİDEO KOMUTLARI
-    if (video) { 
+    // 2. SYNC (Hoş Geldin Paketi)
+    else if (data.type === 'SYNC') {
+        if (location.href !== data.newUrl && data.newUrl.includes("watch?v=")) {
+            window.location.href = data.newUrl;
+            return;
+        }
+        if (video) {
+            video.currentTime = data.time;
+            if (data.isPlaying) video.play(); else video.pause();
+        }
+    }
+    // 3. NORMAL VİDEO EYLEMLERİ
+    else if (video) {
         if (data.type === 'PLAY') video.play();
         else if (data.type === 'PAUSE') video.pause();
         else if (data.type === 'SEEK') video.currentTime = data.time;
-        
-        // SYNC (HOŞ GELDİN PAKETİ)
-        else if (data.type === 'SYNC') {
-            console.log("🔄 Senkronize olunuyor...");
-            // Önce zamana git, sonra oynatma durumunu ayarla
-            video.currentTime = data.time; 
-            if (data.isPlaying) video.play();
-            else video.pause();
-        }
     }
 
-    setTimeout(() => { isRemoteAction = false; }, 800);
+    // Kilidi 1 saniye sonra aç (Ağ gecikmesi için güvenli pay)
+    setTimeout(() => { isRemoteAction = false; }, 1000);
 });
 
-// --- HOŞ GELDİN (SYNC) SİSTEMİ ---
-// Yeni gelen kişi için rapor hazırla
-socket.on('getSyncData', (requesterId) => {
+// --- YENİ GELENLERE DURUM RAPORU VER ---
+socket.on('requestSync', (requesterId) => {
     if (!isPartyActive || !video) return;
-
-    console.log("👋 Yeni üyeye durum raporu gönderiliyor...");
     
-    const syncPayload = {
+    console.log("👋 Yeni gelene rapor veriliyor...");
+    socket.emit('sendSyncData', {
         targetId: requesterId,
         action: {
             type: 'SYNC',
             time: video.currentTime,
             isPlaying: !video.paused,
-            newUrl: location.href, // <--- KRİTİK EKLEME: Şu anki URL'yi de gönder!
+            newUrl: location.href,
             roomId: roomId
         }
-    };
-    socket.emit('sendSyncData', syncPayload);
+    });
 });
 
 // --- POPUP İLETİŞİMİ ---
-chrome.runtime.onMessage.addListener((message) => {
-    // KATILMA
-    if (message.type === "JOIN_NEW_ROOM") {
+chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === "JOIN") {
         isPartyActive = true;
         sessionStorage.setItem('jamActive', 'true');
-        socket.emit('joinRoom', message.roomId);
-        roomId = message.roomId; 
-        alert("Odaya katıldın! Senkronizasyon bekleniyor...");
-        location.reload(); // Sayfayı yenile ki temiz başlasın
+        roomId = msg.roomId;
+        connectToRoom();
+        alert("Odaya Bağlandın! (Sayfa yenilenmeyecek)");
+        
+        // Bağlanır bağlanmaz elimizde video varsa durumunu bildir (Opsiyonel tetik)
+        if(video) attachEvents(video);
     }
-    // AYRILMA (ÇIKIŞ)
-    else if (message.type === "LEAVE_ROOM") {
+    else if (msg.type === "LEAVE") {
         isPartyActive = false;
         sessionStorage.removeItem('jamActive');
         socket.emit('leaveRoom', roomId);
-        alert("Odadan ayrıldın. Özgürsün!");
-        location.reload(); // Bağlantıyı koparmak için en temiz yol
+        alert("Odadan Ayrıldın.");
+        // Sayfayı temizlemek için yenilemek en garantisi
+        location.reload(); 
     }
 });
