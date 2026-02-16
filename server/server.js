@@ -10,28 +10,29 @@ const io = new Server(server, {
 
 io.on('connection', (socket) => {
     
-    // 1. Odaya Katılma
     socket.on('joinRoom', (roomId) => {
         socket.join(roomId);
-        console.log(`Cihaz bağlandı: ${socket.id} -> Oda: ${roomId}`);
+        console.log(`➕ Odaya giriş: ${socket.id} -> ${roomId}`);
         
-        // YENİ: Odaya giren kişi "Hey, durum nedir?" diye sorar.
-        // Biz de odadaki diğer herkese "Yeni biri geldi, ona durumu bildirin" deriz.
+        // Odaya yeni giren kişi için diğerlerinden durum raporu iste
         socket.to(roomId).emit('getSyncData', socket.id); 
     });
 
-    // 2. Video Aksiyonları (Play/Pause/Seek/URL)
+    socket.on('leaveRoom', (roomId) => {
+        socket.leave(roomId);
+        console.log(`➖ Odadan çıkış: ${socket.id}`);
+    });
+
     socket.on('videoAction', (data) => {
         socket.to(data.roomId).emit('videoActionFromServer', data);
     });
 
-    // 3. YENİ: Durum Raporu İletme (Eskilerden Yeniye)
     socket.on('sendSyncData', (data) => {
-        // data.targetId: Bilgiyi isteyen yeni kişinin kimliği
+        // Raporu sadece isteyen kişiye ilet
         io.to(data.targetId).emit('videoActionFromServer', data.action);
     });
 });
 
 server.listen(3000, () => {
-    console.log('Haberci 3000 portunda aktif! (Otomatik Senkron Özellikli)');
+    console.log('🚀 Haberci V2 hazır!');
 });
