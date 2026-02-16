@@ -1,74 +1,88 @@
 // 1. Başlangıç Ayarları
-// 'const' yerine 'let' kullandık çünkü oda ismi popup'tan gelen mesajla değişebilecek.
 let roomId = "vibe-room-1"; 
 const socket = io("http://localhost:3000");
-
-// 2. Kilit (Flag) Mekanizması
-// Sunucudan gelen komutların sonsuz döngüye girmesini engeller.
 let isRemoteAction = false; 
+let video = null; // Video elementini saklayacağımız değişken
 
-// 3. Odaya İlk Giriş
+// 2. Odaya Bağlan
 socket.emit('joinRoom', roomId);
 
 socket.on('connect', () => {
-    console.log("Sunucuya bağlandım! Şu anki oda:", roomId);
+    console.log("✅ Sunucuya bağlandım! Oda:", roomId);
 });
 
-// 4. Video Oynatıcıyı Yakala
-const video = document.querySelector('video');
+// 3. Videoyu Bulma Fonksiyonu (Best Practice: Sürekli Kontrol)
+// YouTube'da sayfa değişmeden video değiştiği için bu yapı şarttır.
+function findAndAttachVideo() {
+    const newVideo = document.querySelector('video');
 
-if (video) {
-    // --- KULLANICI HAREKETLERİNİ DİNLE (Sunucuya Gönder) ---
+    // Eğer video bulunduysa ve daha önce tanımladığımız video değilse
+    if (newVideo && newVideo !== video) {
+        console.log("🎥 Video elementi bulundu ve olaylar eklendi!");
+        video = newVideo;
+        attachEvents(video);
+    }
+}
 
-    video.onplay = () => {
+// 4. Olayları Ekleme Fonksiyonu
+function attachEvents(videoElement) {
+    // Kullanıcı Oynattığında
+    videoElement.addEventListener('play', () => {
         if (!isRemoteAction) {
+            console.log("📤 Play gönderiliyor...");
             socket.emit('videoAction', { type: 'PLAY', roomId: roomId });
         }
-    };
+    });
 
-    video.onpause = () => {
+    // Kullanıcı Durdurduğunda
+    videoElement.addEventListener('pause', () => {
         if (!isRemoteAction) {
+            console.log("📤 Pause gönderiliyor...");
             socket.emit('videoAction', { type: 'PAUSE', roomId: roomId });
         }
-    };
+    });
 
-    video.onseeking = () => {
+    // Kullanıcı İleri/Geri Sardığında
+    videoElement.addEventListener('seeking', () => {
         if (!isRemoteAction) {
+            console.log("📤 Seek gönderiliyor:", videoElement.currentTime);
             socket.emit('videoAction', { 
                 type: 'SEEK', 
-                time: video.currentTime, 
+                time: videoElement.currentTime, 
                 roomId: roomId 
             });
         }
-    };
-
-    // --- SUNUCUDAN GELEN EMİRLERİ DİNLE (Videoya Uygula) ---
-
-    socket.on('videoActionFromServer', (data) => {
-        isRemoteAction = true; // Kilidi kapat
-
-        if (data.type === 'PLAY') {
-            video.play();
-        } else if (data.type === 'PAUSE') {
-            video.pause();
-        } else if (data.type === 'SEEK') {
-            video.currentTime = data.time;
-        }
-
-        // Kısa bir süre sonra kilidi tekrar aç
-        setTimeout(() => { isRemoteAction = false; }, 500);
     });
 }
 
-// 5. POPUP'TAN GELEN MESAJLARI DİNLE (Oda Değiştirme)
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+// Her 1 saniyede bir "Video var mı?" diye kontrol et
+setInterval(findAndAttachVideo, 1000);
+
+
+// 5. SUNUCUDAN GELEN MESAJLARI DİNLE
+socket.on('videoActionFromServer', (data) => {
+    if (!video) return; // Video yoksa işlem yapma
+
+    console.log("📥 Sunucudan emir geldi:", data.type);
+    isRemoteAction = true; // Kilit Tak
+
+    if (data.type === 'PLAY') {
+        video.play();
+    } else if (data.type === 'PAUSE') {
+        video.pause();
+    } else if (data.type === 'SEEK') {
+        video.currentTime = data.time;
+    }
+
+    // Kilidi birazdan aç
+    setTimeout(() => { isRemoteAction = false; }, 500);
+});
+
+// 6. Popup İletişimi
+chrome.runtime.onMessage.addListener((message) => {
     if (message.type === "JOIN_NEW_ROOM") {
-        console.log("Yeni odaya geçiş yapılıyor:", message.roomId);
-        
-        // Eski odadan bağı kopar ve yeni odaya gir (Server tarafında joinRoom bunu halleder)
+        console.log("Yeni odaya geçiş:", message.roomId);
         socket.emit('joinRoom', message.roomId);
-        
-        // Yerel oda değişkenini güncelle ki mesajlar artık yeni odaya gitsin
         roomId = message.roomId; 
     }
 });
