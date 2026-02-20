@@ -1,58 +1,124 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>YouTubeJam</title>
     <style>
-        body { width: 300px; font-family: sans-serif; padding: 10px; text-align: center; }
-        h3 { color: #ff0000; margin: 5px 0; }
-        
-        input { width: 90%; padding: 8px; margin-bottom: 5px; border: 1px solid #ccc; border-radius: 4px; }
-        
-        button { width: 100%; padding: 8px; border: none; border-radius: 4px; cursor: pointer; margin-top: 5px; font-weight: bold; }
-        .btn-join { background-color: #28a745; color: white; }
-        .btn-leave { background-color: #dc3545; color: white; }
-        .btn-add { background-color: #007bff; color: white; margin-bottom: 10px;}
-
-        /* YENİ: Senkronizasyon Uyarısı */
-        #syncAlert {
-            display: none; /* Varsayılan olarak gizli */
-            background-color: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeeba;
-            padding: 10px;
-            margin-top: 10px;
-            border-radius: 4px;
-            font-size: 13px;
-        }
-        .btn-sync { background-color: #ffc107; color: black; margin-top: 5px; }
-
-        #queueList { list-style: none; padding: 0; text-align: left; max-height: 150px; overflow-y: auto; border-top: 1px solid #eee; margin-top: 10px;}
-        #queueList li { padding: 5px; border-bottom: 1px solid #eee; font-size: 12px; word-break: break-all; }
-        #queueList li:before { content: "🎵 "; }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        margin: 0;
+        padding: 12px;
+        width: 320px;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 10px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1;
+      }
+      label {
+        font-size: 12px;
+        color: #444;
+      }
+      input {
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        font-size: 13px;
+        outline: none;
+      }
+      input:focus {
+        border-color: #888;
+      }
+      button {
+        padding: 10px;
+        border: 0;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .btn-primary {
+        background: #111;
+        color: #fff;
+      }
+      .btn-secondary {
+        background: #eee;
+        color: #111;
+      }
+      .status {
+        padding: 10px;
+        border-radius: 12px;
+        background: #f6f6f6;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #ddd;
+        font-size: 12px;
+        margin-left: 6px;
+      }
+      .ok {
+        background: #cfead6;
+      }
+      .bad {
+        background: #f3c7c7;
+      }
+      .muted {
+        color: #666;
+      }
+      .divider {
+        height: 1px;
+        background: #e6e6e6;
+        margin: 10px 0;
+      }
     </style>
-</head>
-<body>
-    <h3>Youtube Party 🎉</h3>
-    
-    <input type="text" id="roomInput" value="vibe-room-1">
-    <button id="joinBtn" class="btn-join">ODAYA KATIL</button>
-    <button id="leaveBtn" class="btn-leave">AYRIL</button>
-    
-    <div id="syncAlert">
-        ⚠️ Parti başka bir videoda!
-        <button id="syncBtn" class="btn-sync">VİDEOYA GİT</button>
+  </head>
+
+  <body>
+    <h1>YouTubeJam 🎧</h1>
+
+    <div class="col">
+      <div class="col">
+        <label for="serverUrl">Server URL</label>
+        <input id="serverUrl" type="text" placeholder="http://localhost:3000" />
+      </div>
+
+      <div class="col">
+        <label for="roomId">Room ID</label>
+        <input id="roomId" type="text" placeholder="örn: oda123" />
+      </div>
+
+      <div class="row">
+        <button id="btnJoin" class="btn-primary" style="flex: 1">Join</button>
+        <button id="btnLeave" class="btn-secondary" style="flex: 1">Leave</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="status" id="statusBox">
+        <div>
+          Connection:
+          <span id="connPill" class="pill bad">offline</span>
+        </div>
+        <div class="muted">Room: <span id="roomText">-</span></div>
+        <div class="muted">Users: <span id="usersText">-</span></div>
+        <div class="muted">Video: <span id="videoText">-</span></div>
+      </div>
     </div>
 
-    <hr>
-    
-    <h4>Sıradaki Parçalar</h4>
-    <input type="text" id="videoUrlInput" placeholder="Youtube Linki Yapıştır...">
-    <button id="addQueueBtn" class="btn-add">LİSTEYE EKLE (+)</button>
-
-    <ul id="queueList">
-        <li>Liste boş...</li>
-    </ul>
-    
     <script src="popup.js"></script>
-</body>
+  </body>
 </html>

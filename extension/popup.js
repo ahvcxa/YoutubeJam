@@ -1,95 +1,150 @@
-let activePartyUrl = null;
+/* extension/popup.js */
+"use strict";
 
-// --- TEMEL BUTONLAR ---
-document.getElementById('joinBtn').addEventListener('click', () => {
-    const roomId = document.getElementById('roomInput').value;
-    sendMessage("JOIN", { roomId });
-    chrome.storage.local.set({ savedRoomId: roomId });
+const STORAGE_KEYS = Object.freeze({
+  SERVER_URL: "ytj_server_url",
+  ROOM_ID: "ytj_room_id",
 });
 
-document.getElementById('leaveBtn').addEventListener('click', () => {
-    sendMessage("LEAVE");
-});
+const els = {
+  serverUrl: document.getElementById("serverUrl"),
+  roomId: document.getElementById("roomId"),
+  btnJoin: document.getElementById("btnJoin"),
+  btnLeave: document.getElementById("btnLeave"),
 
-// YENİ: Sync Butonu
-document.getElementById('syncBtn').addEventListener('click', () => {
-    if (activePartyUrl) {
-        chrome.tabs.update({ url: activePartyUrl });
-    }
-});
+  statusBox: document.getElementById("statusBox"),
+  connPill: document.getElementById("connPill"),
+  roomText: document.getElementById("roomText"),
+  usersText: document.getElementById("usersText"),
+  videoText: document.getElementById("videoText"),
+};
 
-// --- LİSTE BUTONLARI ---
-document.getElementById('addQueueBtn').addEventListener('click', () => {
-    const url = document.getElementById('videoUrlInput').value;
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
-        sendMessage("QUEUE_ADD", { url });
-        document.getElementById('videoUrlInput').value = ""; 
-    } else {
-        alert("Lütfen geçerli bir YouTube linki girin!");
-    }
-});
-
-// --- İLETİŞİM FONKSİYONU ---
-function sendMessage(type, data = {}) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if(tabs[0]) {
-            chrome.tabs.sendMessage(tabs[0].id, { type, ...data });
-        }
-    });
+function setConnPill(connected) {
+  els.connPill.textContent = connected ? "online" : "offline";
+  els.connPill.classList.toggle("ok", !!connected);
+  els.connPill.classList.toggle("bad", !connected);
 }
 
-// --- POPUP AÇILINCA ---
-chrome.storage.local.get(['savedRoomId'], (res) => {
-    if (res.savedRoomId) document.getElementById('roomInput').value = res.savedRoomId;
-});
+function setStatus({ connected, roomId, usersCount, hasVideo }) {
+  setConnPill(connected);
+  els.roomText.textContent = roomId || "-";
+  els.usersText.textContent = Number.isFinite(usersCount) ? String(usersCount) : "-";
+  els.videoText.textContent = hasVideo ? "found ✅" : "not found ❌";
+}
 
-// Content Script'ten verileri iste
-sendMessage("GET_QUEUE_DATA");
+async function getActiveTabId() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab?.id;
+}
 
-// --- Content Script'ten Gelen Yanıtı Dinle ---
+function sendToActiveTab(message) {
+  return new Promise(async (resolve) => {
+    const tabId = await getActiveTabId();
+    if (!tabId) return resolve({ ok: false, error: "No active tab" });
+
+    chrome.tabs.sendMessage(tabId, message, (resp) => {
+      // content script yoksa lastError olur (örn. youtube değil)
+      const err = chrome.runtime.lastError;
+      if (err) return resolve({ ok: false, error: err.message });
+      resolve(resp || { ok: true });
+    });
+  });
+}
+
+function saveInputs() {
+  const serverUrl = (els.serverUrl.value || "").trim() || "http://localhost:3000";
+  const roomId = (els.roomId.value || "").trim();
+
+  chrome.storage.local.set({
+    [STORAGE_KEYS.SERVER_URL]: serverUrl,
+    [STORAGE_KEYS.ROOM_ID]: roomId,
+  });
+
+  return { serverUrl, roomId };
+}
+
+async function loadInputs() {
+  const saved = await chrome.storage.local.get([STORAGE_KEYS.SERVER_URL, STORAGE_KEYS.ROOM_ID]);
+
+  els.serverUrl.value = saved[STORAGE_KEYS.SERVER_URL] || "http://localhost:3000";
+  els.roomId.value = saved[STORAGE_KEYS.ROOM_ID] || "";
+}
+
+async function refreshStatus() {
+  const resp = await sendToActiveTab({ type: "YTJ_PING" });
+
+  if (!resp?.ok) {
+    // YouTube tab değilse, ya da content script yüklenmediyse
+    setStatus({ connected: false, roomId: "-", usersCount: NaN, hasVideo: false });
+    return;
+  }
+
+  setStatus({
+    connected: !!resp.connected,
+    roomId: resp.roomId || "-",
+    usersCount: window.__ytjUsersCount ?? NaN, // room users event'i gelirse güncelleriz
+    hasVideo: !!resp.hasVideo,
+  });
+}
+
+/**
+ * Room users eventleri background üzerinden değil direkt popup'a gelir mi?
+ * Popup sadece açıkken runtime mesajlarını dinleyebilir.
+ * content.js, ROOM_USERS yakalayınca runtime.sendMessage atıyordu.
+ */
 chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.type === "UPDATE_POPUP_QUEUE") {
-        // Listeyi güncelle
-        renderQueue(msg.queue);
-        
-        // URL KONTROLÜ (Senkronize miyiz?)
-        if (msg.partyUrl) {
-            activePartyUrl = msg.partyUrl;
-            checkSyncStatus(activePartyUrl);
-        }
+  if (!msg || typeof msg !== "object") return;
+
+  if (msg.type === "YTJ_ROOM_USERS") {
+    const payload = msg.payload || {};
+    const count = Number(payload.count);
+    if (Number.isFinite(count)) {
+      window.__ytjUsersCount = count;
+      els.usersText.textContent = String(count);
     }
+  }
+
+  if (msg.type === "YTJ_JOINED") {
+    // join ack sonrası hızlı güncelle
+    setConnPill(true);
+    els.roomText.textContent = msg.roomId || "-";
+  }
 });
 
-function checkSyncStatus(partyUrl) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const currentTab = tabs[0];
-        // Basit string karşılaştırması (Youtube parametreleri bazen sırayı değiştirir, ama genelde watch?v=ID aynı kalır)
-        // Daha sağlam kontrol için sadece video ID'sine bakılabilir ama şimdilik URL yeterli.
-        
-        const alertBox = document.getElementById('syncAlert');
-        
-        if (currentTab.url !== partyUrl) {
-            // Farklı sayfadayız, uyarıyı göster
-            alertBox.style.display = "block";
-        } else {
-            // Aynı sayfadayız, gizle
-            alertBox.style.display = "none";
-        }
-    });
-}
+els.btnJoin.addEventListener("click", async () => {
+  const { serverUrl, roomId } = saveInputs();
 
-function renderQueue(queue) {
-    const listEl = document.getElementById('queueList');
-    listEl.innerHTML = "";
-    
-    if (!queue || queue.length === 0) {
-        listEl.innerHTML = "<li>Liste boş...</li>";
-        return;
-    }
+  if (!roomId) {
+    els.roomText.textContent = "roomId boş ❗";
+    return;
+  }
 
-    queue.forEach(url => {
-        const li = document.createElement('li');
-        li.textContent = url.substring(0, 35) + "..."; 
-        listEl.appendChild(li);
-    });
-}
+  const resp = await sendToActiveTab({
+    type: "YTJ_JOIN",
+    serverUrl,
+    roomId,
+  });
+
+  if (!resp?.ok) {
+    setStatus({ connected: false, roomId: "-", usersCount: NaN, hasVideo: false });
+    els.roomText.textContent = `Hata: ${resp?.error || "join failed"}`;
+    return;
+  }
+
+  // ping ile gerçek durum al
+  await refreshStatus();
+});
+
+els.btnLeave.addEventListener("click", async () => {
+  saveInputs();
+  await sendToActiveTab({ type: "YTJ_LEAVE" });
+
+  // local UI reset
+  window.__ytjUsersCount = NaN;
+  setStatus({ connected: false, roomId: "-", usersCount: NaN, hasVideo: !!document.querySelector("video") });
+});
+
+(async function init() {
+  await loadInputs();
+  await refreshStatus();
+})();
