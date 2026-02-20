@@ -65,13 +65,23 @@ function applyPendingSync() {
     }
 }
 
+// URL'den sadece Video ID'sini çeken yardımcı fonksiyon
+function getVideoId(url) {
+    const urlObj = new URL(url);
+    return urlObj.searchParams.get("v");
+}
+
 // 3. KOMUT MERKEZİ
 function handleServerAction(data) {
     isRemoteAction = true;
     console.log("📥 Sunucudan emir:", data.type);
 
     if (data.type === 'URL_CHANGE' || data.type === 'SYNC') {
-        if (location.href !== data.newUrl) {
+            const currentVideoId = getVideoId(location.href);
+            const incomingVideoId = getVideoId(data.newUrl);
+
+// Tüm link yerine sadece Video ID'lerini karşılaştırıyoruz
+        if (currentVideoId !== incomingVideoId) {
             if (data.type === 'SYNC') {
                 sessionStorage.setItem('pendingSyncTime', data.time);
                 sessionStorage.setItem('pendingSyncState', data.state);
