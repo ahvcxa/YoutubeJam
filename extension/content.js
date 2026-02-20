@@ -2,7 +2,8 @@
 let roomId = "vibe-room-1"; 
 const socket = io("http://localhost:3000");
 let isRemoteAction = false; 
-let video = null; // Video elementini saklayacağımız değişken
+let video = null; 
+let currentUrl = location.href; // Şu anki linki hafızaya al
 
 // 2. Odaya Bağlan
 socket.emit('joinRoom', roomId);
@@ -11,14 +12,27 @@ socket.on('connect', () => {
     console.log("✅ Sunucuya bağlandım! Oda:", roomId);
 });
 
-// 3. Videoyu Bulma Fonksiyonu (Best Practice: Sürekli Kontrol)
-// YouTube'da sayfa değişmeden video değiştiği için bu yapı şarttır.
-function findAndAttachVideo() {
-    const newVideo = document.querySelector('video');
+// 3. Videoyu Bulma ve URL Takip Fonksiyonu
+function checkPageStatus() {
+    // A) URL DEĞİŞİM KONTROLÜ (YENİ ÖZELLİK)
+    if (location.href !== currentUrl) {
+        currentUrl = location.href;
+        
+        // Eğer bu değişimi kullanıcı yaptıysa (sunucudan gelmediyse)
+        if (!isRemoteAction) {
+            console.log("🔗 Yeni video açıldı, diğerlerine haber veriliyor...");
+            socket.emit('videoAction', { 
+                type: 'URL_CHANGE', 
+                newUrl: currentUrl, 
+                roomId: roomId 
+            });
+        }
+    }
 
-    // Eğer video bulunduysa ve daha önce tanımladığımız video değilse
+    // B) VIDEO ELEMENT KONTROLÜ
+    const newVideo = document.querySelector('video');
     if (newVideo && newVideo !== video) {
-        console.log("🎥 Video elementi bulundu ve olaylar eklendi!");
+        console.log("🎥 Video elementi bulundu/yenilendi.");
         video = newVideo;
         attachEvents(video);
     }
@@ -26,62 +40,51 @@ function findAndAttachVideo() {
 
 // 4. Olayları Ekleme Fonksiyonu
 function attachEvents(videoElement) {
-    // Kullanıcı Oynattığında
     videoElement.addEventListener('play', () => {
-        if (!isRemoteAction) {
-            console.log("📤 Play gönderiliyor...");
-            socket.emit('videoAction', { type: 'PLAY', roomId: roomId });
-        }
+        if (!isRemoteAction) socket.emit('videoAction', { type: 'PLAY', roomId });
     });
 
-    // Kullanıcı Durdurduğunda
     videoElement.addEventListener('pause', () => {
-        if (!isRemoteAction) {
-            console.log("📤 Pause gönderiliyor...");
-            socket.emit('videoAction', { type: 'PAUSE', roomId: roomId });
-        }
+        if (!isRemoteAction) socket.emit('videoAction', { type: 'PAUSE', roomId });
     });
 
-    // Kullanıcı İleri/Geri Sardığında
     videoElement.addEventListener('seeking', () => {
         if (!isRemoteAction) {
-            console.log("📤 Seek gönderiliyor:", videoElement.currentTime);
-            socket.emit('videoAction', { 
-                type: 'SEEK', 
-                time: videoElement.currentTime, 
-                roomId: roomId 
-            });
+            socket.emit('videoAction', { type: 'SEEK', time: videoElement.currentTime, roomId });
         }
     });
 }
 
-// Her 1 saniyede bir "Video var mı?" diye kontrol et
-setInterval(findAndAttachVideo, 1000);
-
+// Her yarım saniyede bir hem videoyu hem linki kontrol et
+setInterval(checkPageStatus, 500);
 
 // 5. SUNUCUDAN GELEN MESAJLARI DİNLE
 socket.on('videoActionFromServer', (data) => {
-    if (!video) return; // Video yoksa işlem yapma
-
     console.log("📥 Sunucudan emir geldi:", data.type);
-    isRemoteAction = true; // Kilit Tak
+    isRemoteAction = true; 
 
-    if (data.type === 'PLAY') {
-        video.play();
-    } else if (data.type === 'PAUSE') {
-        video.pause();
-    } else if (data.type === 'SEEK') {
-        video.currentTime = data.time;
+    if (data.type === 'URL_CHANGE') {
+        // Gelen link bendekiyle aynı değilse oraya git
+        if (location.href !== data.newUrl) {
+            console.log("🚀 Arkadaşın gittiği videoya ışınlanılıyor...");
+            window.location.href = data.newUrl;
+        }
+    } 
+    else if (video) { 
+        // Video komutları (Play/Pause/Seek)
+        if (data.type === 'PLAY') video.play();
+        else if (data.type === 'PAUSE') video.pause();
+        else if (data.type === 'SEEK') video.currentTime = data.time;
     }
 
-    // Kilidi birazdan aç
-    setTimeout(() => { isRemoteAction = false; }, 500);
+    // URL değişiminde sayfa yenilendiği için bu timeout sıfırlanır, sorun olmaz.
+    // Video işlemlerinde kilidi açmak için bekleriz.
+    setTimeout(() => { isRemoteAction = false; }, 1000);
 });
 
 // 6. Popup İletişimi
 chrome.runtime.onMessage.addListener((message) => {
     if (message.type === "JOIN_NEW_ROOM") {
-        console.log("Yeni odaya geçiş:", message.roomId);
         socket.emit('joinRoom', message.roomId);
         roomId = message.roomId; 
     }
