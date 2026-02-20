@@ -137,6 +137,8 @@ chrome.runtime.onMessage.addListener((message) => {
     if (message.type === "JOIN_NEW_ROOM") {
         sessionStorage.setItem('jamActive', 'true');
         connect(message.roomId);
+        // Yeni eklenen geri bildirim:
+        alert(`${message.roomId} odasına başarıyla katıldın!`);
     }
     else if (message.type === "LEAVE_ROOM") {
         if (socket) {
