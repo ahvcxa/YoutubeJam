@@ -1,15 +1,32 @@
+// KATIL BUTONU
 document.getElementById('joinBtn').addEventListener('click', () => {
     const roomId = document.getElementById('roomInput').value;
+    sendMessageToContent("JOIN_NEW_ROOM", roomId);
+});
 
-    // Aktif olan YouTube sekmesini bul ve ona mesaj gönder
+// AYRIL BUTONU
+document.getElementById('leaveBtn').addEventListener('click', () => {
+    sendMessageToContent("LEAVE_ROOM", null);
+});
+
+// Yardımcı Fonksiyon
+function sendMessageToContent(type, data) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        chrome.tabs.sendMessage(tabs[0].id, {
-            type: "JOIN_NEW_ROOM",
-            roomId: roomId
-        });
+        if (tabs[0]) {
+            chrome.tabs.sendMessage(tabs[0].id, {
+                type: type,
+                roomId: data
+            });
+        }
     });
+    
+    // Odayı kaydet
+    if(data) chrome.storage.local.set({ savedRoomId: data });
+}
 
-    // Best Practice: Odayı hafızaya kaydet ki pencere kapanınca unutmasın
-    chrome.storage.local.set({ savedRoomId: roomId });
-    alert("Oda değiştirme isteği gönderildi: " + roomId);
+// Kayıtlı odayı geri getir
+chrome.storage.local.get(['savedRoomId'], (result) => {
+    if (result.savedRoomId) {
+        document.getElementById('roomInput').value = result.savedRoomId;
+    }
 });

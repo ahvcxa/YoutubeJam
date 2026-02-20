@@ -1,26 +1,27 @@
-// 1. Başlangıç Ayarları
+// 1. BAŞLANGIÇ AYARLARI
 let roomId = "vibe-room-1"; 
 const socket = io("http://localhost:3000");
 let isRemoteAction = false; 
 let video = null; 
 let currentUrl = location.href; // Şu anki linki hafızaya al
 
-// 2. Odaya Bağlan
+// 2. ODAYA BAĞLAN
 socket.emit('joinRoom', roomId);
 
 socket.on('connect', () => {
     console.log("✅ Sunucuya bağlandım! Oda:", roomId);
 });
 
-// 3. Videoyu Bulma ve URL Takip Fonksiyonu
+// 3. SÜREKLİ KONTROL MERKEZİ (Hem Video Hem Link İçin)
 function checkPageStatus() {
-    // A) URL DEĞİŞİM KONTROLÜ (YENİ ÖZELLİK)
+    // --- A) LİNK DEĞİŞİM KONTROLÜ (Işınlanma Özelliği) ---
     if (location.href !== currentUrl) {
+        // Link değişmiş!
         currentUrl = location.href;
         
-        // Eğer bu değişimi kullanıcı yaptıysa (sunucudan gelmediyse)
+        // Eğer bu değişimi sunucu yapmadıysa (ben tıkladıysam)
         if (!isRemoteAction) {
-            console.log("🔗 Yeni video açıldı, diğerlerine haber veriliyor...");
+            console.log("🔗 Yeni bir videoya geçildi:", currentUrl);
             socket.emit('videoAction', { 
                 type: 'URL_CHANGE', 
                 newUrl: currentUrl, 
@@ -29,60 +30,62 @@ function checkPageStatus() {
         }
     }
 
-    // B) VIDEO ELEMENT KONTROLÜ
+    // --- B) VİDEO ELEMENT KONTROLÜ ---
     const newVideo = document.querySelector('video');
+    // Video varsa VE (daha önce video yoksa VEYA video değiştiyse)
     if (newVideo && newVideo !== video) {
-        console.log("🎥 Video elementi bulundu/yenilendi.");
+        console.log("🎥 Yeni video elementi tanımlandı.");
         video = newVideo;
         attachEvents(video);
     }
 }
 
-// 4. Olayları Ekleme Fonksiyonu
+// 4. VİDEO OLAYLARINI DİNLEME (Play/Pause/Seek)
 function attachEvents(videoElement) {
-    videoElement.addEventListener('play', () => {
+    videoElement.onplay = () => {
         if (!isRemoteAction) socket.emit('videoAction', { type: 'PLAY', roomId });
-    });
+    };
 
-    videoElement.addEventListener('pause', () => {
+    videoElement.onpause = () => {
         if (!isRemoteAction) socket.emit('videoAction', { type: 'PAUSE', roomId });
-    });
+    };
 
-    videoElement.addEventListener('seeking', () => {
+    videoElement.onseeking = () => {
         if (!isRemoteAction) {
             socket.emit('videoAction', { type: 'SEEK', time: videoElement.currentTime, roomId });
         }
-    });
+    };
 }
 
-// Her yarım saniyede bir hem videoyu hem linki kontrol et
+// Her yarım saniyede bir sayfayı kontrol et
 setInterval(checkPageStatus, 500);
 
-// 5. SUNUCUDAN GELEN MESAJLARI DİNLE
+
+// 5. SUNUCUDAN GELEN MESAJLARI UYGULA
 socket.on('videoActionFromServer', (data) => {
-    console.log("📥 Sunucudan emir geldi:", data.type);
-    isRemoteAction = true; 
+    isRemoteAction = true; // Kilit tak (Sonsuz döngü olmasın)
+    console.log("📥 Sunucudan emir:", data.type);
 
     if (data.type === 'URL_CHANGE') {
-        // Gelen link bendekiyle aynı değilse oraya git
+        // Eğer bende o video açık değilse, o sayfaya git
         if (location.href !== data.newUrl) {
-            console.log("🚀 Arkadaşın gittiği videoya ışınlanılıyor...");
-            window.location.href = data.newUrl;
+            console.log("🚀 Arkadaşın videosuna ışınlanılıyor...");
+            window.location.href = data.newUrl; 
         }
     } 
     else if (video) { 
-        // Video komutları (Play/Pause/Seek)
+        // Video komutları
         if (data.type === 'PLAY') video.play();
         else if (data.type === 'PAUSE') video.pause();
         else if (data.type === 'SEEK') video.currentTime = data.time;
     }
 
-    // URL değişiminde sayfa yenilendiği için bu timeout sıfırlanır, sorun olmaz.
-    // Video işlemlerinde kilidi açmak için bekleriz.
+    // URL değişimi sayfayı yenileyeceği için timeout önemli değil ama
+    // Play/Pause için kilidi 1 saniye sonra açıyoruz.
     setTimeout(() => { isRemoteAction = false; }, 1000);
 });
 
-// 6. Popup İletişimi
+// 6. POPUP İLETİŞİMİ
 chrome.runtime.onMessage.addListener((message) => {
     if (message.type === "JOIN_NEW_ROOM") {
         socket.emit('joinRoom', message.roomId);

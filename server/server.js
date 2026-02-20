@@ -4,31 +4,35 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-
-// Trafik Polisi (Socket.io) Ayarları
 const io = new Server(server, {
-    cors: {
-        origin: "*", // YouTube'dan gelen bağlantılara izin ver
-        methods: ["GET", "POST"]
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 io.on('connection', (socket) => {
-    console.log('Biri odaya bağlandı! ID:', socket.id);
-
-    // Bir odaya katılma (Jam başlatma)
+    
     socket.on('joinRoom', (roomId) => {
         socket.join(roomId);
-        console.log(`${socket.id} şu odaya girdi: ${roomId}`);
+        console.log(`➕ Odaya giriş: ${socket.id} -> ${roomId}`);
+        
+        // Odaya yeni giren kişi için diğerlerinden durum raporu iste
+        socket.to(roomId).emit('getSyncData', socket.id); 
     });
 
-    // Hareketleri diğerlerine yayma (Play/Pause)
+    socket.on('leaveRoom', (roomId) => {
+        socket.leave(roomId);
+        console.log(`➖ Odadan çıkış: ${socket.id}`);
+    });
+
     socket.on('videoAction', (data) => {
-        // Mesajı gönderen hariç odadaki herkese gönder
         socket.to(data.roomId).emit('videoActionFromServer', data);
+    });
+
+    socket.on('sendSyncData', (data) => {
+        // Raporu sadece isteyen kişiye ilet
+        io.to(data.targetId).emit('videoActionFromServer', data.action);
     });
 });
 
 server.listen(3000, () => {
-    console.log('Haberci 3000 portunda dinlemede... Terminali kapatma!');
+    console.log('🚀 Haberci V2 hazır!');
 });
