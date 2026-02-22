@@ -15,7 +15,7 @@ document.getElementById('leaveBtn').addEventListener('click', () => {
     chrome.storage.local.remove(['savedRoomId']);
 });
 
-// Yardımcı Fonksiyon
+// Yardımcı Fonksiyon (Rozet Işığı Eklendi)
 function sendMessageToContent(type, data) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (tabs[0]) {
@@ -23,6 +23,16 @@ function sendMessageToContent(type, data) {
                 type: type,
                 roomId: data
             });
+
+            // YENİ: ROZET (BADGE) KONTROLÜ
+            if (type === "JOIN_NEW_ROOM") {
+                // Odaya girince yeşil "ON" ışığını yak
+                chrome.action.setBadgeText({ text: "ON", tabId: tabs[0].id });
+                chrome.action.setBadgeBackgroundColor({ color: "#00FF00", tabId: tabs[0].id });
+            } else if (type === "LEAVE_ROOM") {
+                // Odadan çıkınca ışığı söndür (yazıyı temizle)
+                chrome.action.setBadgeText({ text: "", tabId: tabs[0].id });
+            }
         }
     });
 }
