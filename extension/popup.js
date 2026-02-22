@@ -27,9 +27,12 @@ function sendMessageToContent(type, data) {
     });
 }
 
-// Kayıtlı odayı geri getir
-chrome.storage.local.get(['savedRoomId'], (result) => {
+// Kayıtlı odayı ve KİŞİ SAYISINI geri getir
+chrome.storage.local.get(['savedRoomId', 'roomUserCount'], (result) => {
     if (result.savedRoomId) {
         document.getElementById('roomInput').value = result.savedRoomId;
+    }
+    if (result.roomUserCount) {
+        document.getElementById('countDisplay').innerText = `Odada: ${result.roomUserCount} kişi`;
     }
 });
