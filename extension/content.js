@@ -93,6 +93,7 @@ function handleServerAction(data) {
                 sessionStorage.setItem('pendingSyncTime', data.time);
                 sessionStorage.setItem('pendingSyncState', data.state);
             }
+            sessionStorage.setItem('isRemoteNavigating', 'true');
             window.location.href = data.newUrl;
             return; 
         }
@@ -141,8 +142,15 @@ function attachEvents(v) {
 
 setInterval(checkPageStatus, 500);
 
-// --- YENİ EKLENEN KISIM: YOUTUBE SENSÖRÜ ---
+// --- YOUTUBE SENSÖRÜ ---
 window.addEventListener('yt-navigate-finish', () => {
+    const isRemoteNav = sessionStorage.getItem('isRemoteNavigating');
+    if (isRemoteNav === 'true') {
+        sessionStorage.removeItem('isRemoteNavigating');
+        console.log("🤫 Sunucu emriyle yönlendim, geri bildirim (yankı) iptal.");
+        return; // Fonksiyonu burada durduruyoruz, sunucuya mesaj atmıyoruz.
+    }
+
     if (!socket || isRemoteAction) return;
     
     const currentUrl = location.href;
@@ -191,7 +199,6 @@ chrome.runtime.onMessage.addListener((message) => {
 
         console.log("✅ YoutubeJam: Odadan ayrıldın ve bağlantı kesildi.");
         // alert("Odadan ayrıldın."); // Kullanıcıyı sürekli alert ile darlamamak için konsol daha iyidir.
-        location.reload();
     }
 });
 
